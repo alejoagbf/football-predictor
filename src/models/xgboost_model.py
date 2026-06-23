@@ -45,9 +45,9 @@ from src.features.pipeline import FEATURE_COLUMNS
 logger = logging.getLogger(__name__)
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-_MODEL_HOME_FILE = "model_home.joblib"
-_MODEL_AWAY_FILE = "model_away.joblib"
-_MODEL_RESULT_FILE = "model_result.joblib"
+_MODEL_HOME_FILE = "model_home.ubj"
+_MODEL_AWAY_FILE = "model_away.ubj"
+_MODEL_RESULT_FILE = "model_result.ubj"
 
 
 def _poisson_deviance(y_true: np.ndarray, y_pred: np.ndarray) -> float:
@@ -239,11 +239,20 @@ class XGBoostPredictor:
     # ── Persistence ───────────────────────────────────────────────────────────
 
     def save(self, directory: Path | None = None) -> Path:
+        """
+        Save using XGBoost's native UBJ format (save_model), not pickle/joblib.
+
+        Pickling the sklearn wrapper embeds a raw memory buffer that is not
+        guaranteed to round-trip across platforms (e.g. Linux-trained models
+        failing to load on Windows with "input stream corrupted"). The native
+        save_model()/load_model() format is documented by XGBoost as the
+        portable, cross-platform-safe option.
+        """
         out = directory or XGBOOST_MODEL_DIR
         out.mkdir(parents=True, exist_ok=True)
-        joblib.dump(self.model_home, out / _MODEL_HOME_FILE)
-        joblib.dump(self.model_away, out / _MODEL_AWAY_FILE)
-        joblib.dump(self.model_result, out / _MODEL_RESULT_FILE)
+        self.model_home.save_model(str(out / _MODEL_HOME_FILE))  # type: ignore[union-attr]
+        self.model_away.save_model(str(out / _MODEL_AWAY_FILE))  # type: ignore[union-attr]
+        self.model_result.save_model(str(out / _MODEL_RESULT_FILE))  # type: ignore[union-attr]
         joblib.dump(self.feature_cols, out / "feature_cols.joblib")
         logger.info("Saved XGBoost models to %s", out)
         return out
@@ -252,9 +261,12 @@ class XGBoostPredictor:
     def load(cls, directory: Path | None = None) -> "XGBoostPredictor":
         d = directory or XGBOOST_MODEL_DIR
         obj = cls()
-        obj.model_home = joblib.load(d / _MODEL_HOME_FILE)
-        obj.model_away = joblib.load(d / _MODEL_AWAY_FILE)
-        obj.model_result = joblib.load(d / _MODEL_RESULT_FILE)
+        obj.model_home = xgb.XGBRegressor()
+        obj.model_home.load_model(str(d / _MODEL_HOME_FILE))
+        obj.model_away = xgb.XGBRegressor()
+        obj.model_away.load_model(str(d / _MODEL_AWAY_FILE))
+        obj.model_result = xgb.XGBClassifier()
+        obj.model_result.load_model(str(d / _MODEL_RESULT_FILE))
         obj.feature_cols = joblib.load(d / "feature_cols.joblib")
         logger.info("Loaded XGBoost models from %s", d)
         return obj
