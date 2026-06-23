@@ -445,6 +445,27 @@ TOURNAMENT_OPTIONS = {
 }
 
 
+def render_ensemble_control(key: str) -> tuple[float, float]:
+    """Ensemble weight slider, tucked into a collapsed expander with plain-language help."""
+    with st.expander("⚙️ Configuracion avanzada (opcional)", expanded=False):
+        st.caption(
+            "El sistema combina dos formas de predecir: una estadistica clasica (Bayesiano) "
+            "y una de aprendizaje automatico (XGBoost). Este control ajusta cuanto pesa cada "
+            "una en el resultado final. **No necesitas tocarlo** — el valor por defecto ya "
+            "esta calibrado y funciona bien para la mayoria de los partidos."
+        )
+        weight_bayes = st.slider(
+            "Bayesiano  ⟵―――――――⟶  XGBoost",
+            0.0, 1.0, ENSEMBLE_WEIGHT_BAYESIAN, 0.05,
+            key=f"weight_bayes_{key}",
+            help="Deslizar a la izquierda = mas peso al modelo estadistico. "
+                 "Deslizar a la derecha = mas peso al modelo de aprendizaje automatico.",
+        )
+        weight_xgb = round(1.0 - weight_bayes, 2)
+        st.caption(f"Usando **{weight_bayes:.0%} Bayesiano** y **{weight_xgb:.0%} XGBoost**.")
+    return weight_bayes, weight_xgb
+
+
 def render_single_match(teams: list[str]) -> None:
     with st.sidebar:
         st.header("Configuracion del partido")
@@ -468,10 +489,7 @@ def render_single_match(teams: list[str]) -> None:
         is_neutral = st.checkbox("Cancha neutral")
 
         st.divider()
-        st.subheader("Pesos del ensemble")
-        weight_bayes = st.slider("Peso Bayesiano", 0.0, 1.0, ENSEMBLE_WEIGHT_BAYESIAN, 0.05)
-        weight_xgb = round(1.0 - weight_bayes, 2)
-        st.caption(f"Peso XGBoost: {weight_xgb}")
+        weight_bayes, weight_xgb = render_ensemble_control(key="single")
 
         st.divider()
         st.subheader("Clima (opcional)")
@@ -771,10 +789,7 @@ def render_quiniela(teams: list[str]) -> None:
         is_neutral = st.checkbox("Todas a cancha neutral")
 
         st.divider()
-        st.subheader("Pesos del ensemble")
-        weight_bayes = st.slider("Peso Bayesiano", 0.0, 1.0, ENSEMBLE_WEIGHT_BAYESIAN, 0.05, key="q_weight")
-        weight_xgb = round(1.0 - weight_bayes, 2)
-        st.caption(f"Peso XGBoost: {weight_xgb}")
+        weight_bayes, weight_xgb = render_ensemble_control(key="quiniela")
 
     st.subheader("Armar la fecha")
     st.caption("Agrega filas y elegi local/visitante para cada partido. Hasta 20 partidos por tanda.")
