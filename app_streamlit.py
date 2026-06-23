@@ -134,6 +134,25 @@ def render_landing_hero(message: str) -> None:
             unsafe_allow_html=True,
         )
         st.info(message)
+        st.markdown(
+            _html("""
+            <div style="margin-top:1.5rem; padding:1.1rem 1.3rem; background:#FFFFFF;
+                        border:2px solid #1B1A17; border-radius:4px;
+                        display:flex; align-items:center; gap:18px;">
+                <span style="font-size:3rem; line-height:1;">🇨🇴</span>
+                <div>
+                    <div style="font-family:'Anton',sans-serif; text-transform:uppercase;
+                                font-size:1.25rem; letter-spacing:0.5px;">
+                        Alejandro Ortiz Marin
+                    </div>
+                    <div style="font-size:0.85rem; color:#6E6650; margin-top:2px;">
+                        Desarrollador de Software &middot; Universidad de Tel Aviv
+                    </div>
+                </div>
+            </div>
+            """),
+            unsafe_allow_html=True,
+        )
     with col_pitch:
         st.markdown(render_pitch_hero(), unsafe_allow_html=True)
 
