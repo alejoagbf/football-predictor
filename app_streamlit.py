@@ -57,6 +57,13 @@ def _style_borders(fig, width: float = BORDER_WIDTH) -> None:
     fig.update_traces(marker=dict(line=dict(color=INK_TEXT, width=width)), selector=dict(type="pie"))
 
 
+def show_chart(fig) -> None:
+    """Render a plotly chart with click-drag zoom/pan disabled (touch swipes were
+    triggering accidental zoom). Zoom/pan/reset still work via the toolbar buttons."""
+    fig.update_layout(dragmode=False)
+    st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": False})
+
+
 LOGO_BADGE_SVG = """
 <svg viewBox="0 0 40 40" width="40" height="40">
   <circle cx="20" cy="20" r="17.5" fill="#9DC9A4" stroke="#1B1A17" stroke-width="2.5"/>
@@ -643,7 +650,7 @@ def render_single_match(teams: list[str]) -> None:
         fig.update_layout(yaxis_tickformat=".0%", showlegend=False, height=420,
                            title="Resultado del partido")
         _style_borders(fig)
-        st.plotly_chart(fig, use_container_width=True)
+        show_chart(fig)
 
     # ── Tab: Goles ──────────────────────────────────────────────────────────────
     with tab_goles:
@@ -657,7 +664,7 @@ def render_single_match(teams: list[str]) -> None:
                          color_discrete_sequence=[HOME_COLOR, AWAY_COLOR])
             fig.update_layout(showlegend=False, height=380, title="Goles esperados (xG)")
             _style_borders(fig)
-            st.plotly_chart(fig, use_container_width=True)
+            show_chart(fig)
 
         with col2:
             markets_df = pd.DataFrame({
@@ -669,7 +676,7 @@ def render_single_match(teams: list[str]) -> None:
             fig.update_layout(yaxis_tickformat=".0%", height=380, coloraxis_showscale=False,
                                title="Mercados de goles")
             _style_borders(fig)
-            st.plotly_chart(fig, use_container_width=True)
+            show_chart(fig)
 
         st.subheader("Distribucion de marcadores")
         scores = [(int(k.split("-")[0]), int(k.split("-")[1]), v) for k, v in pred.score_probabilities.items()]
@@ -691,7 +698,7 @@ def render_single_match(teams: list[str]) -> None:
             xaxis_title=f"Goles {pred.away_team}", yaxis_title=f"Goles {pred.home_team}",
             height=420, plot_bgcolor=CREAM_BG,
         )
-        st.plotly_chart(fig, use_container_width=True)
+        show_chart(fig)
 
     # ── Tab: Eventos ──────────────────────────────────────────────────────────────
     with tab_eventos:
@@ -706,7 +713,7 @@ def render_single_match(teams: list[str]) -> None:
                 marker=dict(colors=[HOME_COLOR, AWAY_COLOR], line=dict(color=INK_TEXT, width=BORDER_WIDTH)),
             )])
             fig.update_layout(title="Posesion", height=340)
-            st.plotly_chart(fig, use_container_width=True)
+            show_chart(fig)
 
         with col2:
             shots_df = pd.DataFrame({
@@ -718,7 +725,7 @@ def render_single_match(teams: list[str]) -> None:
                          color_discrete_sequence=[HOME_COLOR, AWAY_COLOR])
             fig.update_layout(title="Tiros", height=340)
             _style_borders(fig)
-            st.plotly_chart(fig, use_container_width=True)
+            show_chart(fig)
 
         with col3:
             cards_df = pd.DataFrame({
@@ -729,7 +736,7 @@ def render_single_match(teams: list[str]) -> None:
                          color_discrete_sequence=[CARD_COLOR, CARD_COLOR_2])
             fig.update_layout(title="Tarjetas amarillas", height=340, showlegend=False)
             _style_borders(fig)
-            st.plotly_chart(fig, use_container_width=True)
+            show_chart(fig)
 
         st.caption(
             f"Corners esperados: {e.home_corners:.1f} - {e.away_corners:.1f}  |  "
@@ -784,7 +791,7 @@ def render_single_match(teams: list[str]) -> None:
                              text_auto=".1%", color_discrete_map={"FUERTE": HOME_COLOR, "MODERADO": DRAW_COLOR})
                 fig.update_layout(xaxis_tickformat=".0%", height=320)
                 _style_borders(fig)
-                st.plotly_chart(fig, use_container_width=True)
+                show_chart(fig)
         else:
             st.caption("No hay suficientes partidos historicos similares para detectar patrones.")
 
