@@ -8,6 +8,7 @@ Uso:
 from __future__ import annotations
 
 import io
+import re
 
 import matplotlib.font_manager as fm
 import pandas as pd
@@ -39,10 +40,102 @@ INK_TEXT = "#1B1A17"
 BORDER_WIDTH = 1.6
 
 
+def _html(s: str) -> str:
+    """Collapse a triple-quoted HTML snippet to a single line.
+
+    Streamlit's markdown renderer is whitespace-sensitive (CommonMark): any
+    line indented 4+ spaces is treated as a code block, which is easy to
+    trigger by accident with Python-indented multiline f-strings. Flattening
+    to one line avoids that entirely.
+    """
+    return re.sub(r"\s*\n\s*", " ", s.strip())
+
+
 def _style_borders(fig, width: float = BORDER_WIDTH) -> None:
     """Apply a dark outline to bars/markers/pie slices, matching the 7a0 look."""
     fig.update_traces(marker=dict(line=dict(color=INK_TEXT, width=width)), selector=dict(type="bar"))
     fig.update_traces(marker=dict(line=dict(color=INK_TEXT, width=width)), selector=dict(type="pie"))
+
+
+LOGO_BADGE_SVG = """
+<svg viewBox="0 0 40 40" width="40" height="40">
+  <circle cx="20" cy="20" r="17.5" fill="#9DC9A4" stroke="#1B1A17" stroke-width="2.5"/>
+  <polygon points="20,11 26,15.2 24,22 16,22 14,15.2" fill="#FFFFFF" stroke="#1B1A17" stroke-width="1.4"/>
+  <line x1="20" y1="11" x2="20" y2="5" stroke="#1B1A17" stroke-width="1.4"/>
+  <line x1="26" y1="15.2" x2="32" y2="12" stroke="#1B1A17" stroke-width="1.4"/>
+  <line x1="24" y1="22" x2="27.5" y2="28.5" stroke="#1B1A17" stroke-width="1.4"/>
+  <line x1="16" y1="22" x2="12.5" y2="28.5" stroke="#1B1A17" stroke-width="1.4"/>
+  <line x1="14" y1="15.2" x2="8" y2="12" stroke="#1B1A17" stroke-width="1.4"/>
+</svg>
+"""
+
+
+def render_logo() -> None:
+    st.markdown(
+        _html(f"""
+        <div style="display:flex; align-items:center; gap:14px; margin-bottom:0.2rem;">
+            {_html(LOGO_BADGE_SVG)}
+            <h1 style="margin:0; padding:0;">Predictor de Futbol Internacional</h1>
+        </div>
+        """),
+        unsafe_allow_html=True,
+    )
+
+
+def _pitch_marker(cx: int, cy: int, number: int) -> str:
+    return (
+        f'<circle cx="{cx}" cy="{cy}" r="13" fill="#FFFFFF" stroke="#1B1A17" stroke-width="2"/>'
+        f'<text x="{cx}" y="{cy + 4}" font-size="11" font-weight="700" text-anchor="middle" '
+        f'fill="#1B1A17" font-family="Hanken Grotesk, sans-serif">{number}</text>'
+    )
+
+
+def render_pitch_hero() -> str:
+    """Decorative formation-style pitch illustration, in the spirit of the 7a0 hero graphic."""
+    formation = [
+        (150, 430, 1),
+        (85, 365, 6), (125, 358, 5), (175, 358, 4), (215, 365, 2),
+        (95, 258, 8), (150, 250, 10), (205, 258, 6),
+        (85, 110, 7), (150, 88, 9), (215, 110, 11),
+    ]
+    markers = "".join(_pitch_marker(x, y, n) for x, y, n in formation)
+    return _html(f"""
+    <svg viewBox="0 0 300 460" width="100%" style="max-width:320px; display:block; margin:0 auto;">
+        <rect x="6" y="6" width="288" height="448" rx="6" fill="#BFE2C2" stroke="#1B1A17" stroke-width="3"/>
+        <line x1="6" y1="230" x2="294" y2="230" stroke="#1B1A17" stroke-width="2"/>
+        <circle cx="150" cy="230" r="45" fill="none" stroke="#1B1A17" stroke-width="2"/>
+        <circle cx="150" cy="230" r="2.5" fill="#1B1A17"/>
+        <rect x="80" y="6" width="140" height="64" fill="none" stroke="#1B1A17" stroke-width="2"/>
+        <rect x="115" y="6" width="70" height="26" fill="none" stroke="#1B1A17" stroke-width="2"/>
+        <path d="M 113 70 A 40 40 0 0 0 187 70" fill="none" stroke="#1B1A17" stroke-width="2"/>
+        <rect x="80" y="390" width="140" height="64" fill="none" stroke="#1B1A17" stroke-width="2"/>
+        <rect x="115" y="428" width="70" height="26" fill="none" stroke="#1B1A17" stroke-width="2"/>
+        <path d="M 113 390 A 40 40 0 0 1 187 390" fill="none" stroke="#1B1A17" stroke-width="2"/>
+        {markers}
+    </svg>
+    """)
+
+
+def render_landing_hero(message: str) -> None:
+    col_text, col_pitch = st.columns([3, 2])
+    with col_text:
+        st.markdown(
+            _html("""
+            <p style="text-transform:uppercase; letter-spacing:1.5px; font-size:0.8rem; color:#6E6650; margin-bottom:0.3rem;">
+                Ensemble bayesiano + xgboost &middot; 49k+ partidos
+            </p>
+            """),
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            _html("""
+            <h2 style="margin-top:0;">Elegi el partido.<br>Mira quien gana.</h2>
+            """),
+            unsafe_allow_html=True,
+        )
+        st.info(message)
+    with col_pitch:
+        st.markdown(render_pitch_hero(), unsafe_allow_html=True)
 
 # ── Banderas ───────────────────────────────────────────────────────────────────
 FLAG_OVERRIDES = {
@@ -377,7 +470,7 @@ def render_single_match(teams: list[str]) -> None:
         predict_clicked = st.button("Predecir", type="primary", use_container_width=True)
 
     if not predict_clicked:
-        st.info("Elegi dos selecciones en el menu lateral y presiona **Predecir**.")
+        render_landing_hero("Elegi dos selecciones en el menu lateral y presiona **Predecir**.")
         return
 
     if home_team == away_team:
@@ -734,7 +827,7 @@ def render_quiniela(teams: list[str]) -> None:
     st.download_button("Descargar quiniela (CSV)", data=csv, file_name="quiniela.csv", mime="text/csv")
 
 
-st.title("Predictor de Futbol Internacional")
+render_logo()
 st.caption("Ensemble Bayesiano (PyMC) + XGBoost Poisson sobre 49k+ partidos historicos (1872-presente)")
 
 mode = st.radio(
