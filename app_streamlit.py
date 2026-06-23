@@ -215,11 +215,6 @@ def get_h2h_matches(_df: pd.DataFrame, home: str, away: str, n: int = 10) -> pd.
     return h2h[["date", "home_team", "away_team", "home_score", "away_score", "tournament"]].copy()
 
 
-st.title("⚽ Predictor de Futbol Internacional")
-st.caption("Ensemble Bayesiano (PyMC) + XGBoost Poisson sobre 49k+ partidos historicos (1872-presente)")
-
-teams = get_team_list()
-
 TOURNAMENT_OPTIONS = {
     "Amistoso": "Friendly",
     "Eliminatorias / Clasificacion": "Qualification",
@@ -230,298 +225,412 @@ TOURNAMENT_OPTIONS = {
     "Otro": "Other",
 }
 
-with st.sidebar:
-    st.header("Configuracion del partido")
-    home_team = st.selectbox(
-        "Equipo local", teams,
-        index=teams.index("Argentina") if "Argentina" in teams else 0,
-        format_func=lambda t: f"{team_flag(t)} {t}",
-    )
-    away_team = st.selectbox(
-        "Equipo visitante", teams,
-        index=teams.index("Brazil") if "Brazil" in teams else 1,
-        format_func=lambda t: f"{team_flag(t)} {t}",
-    )
-    tournament_label = st.selectbox(
-        "Contexto del partido",
-        list(TOURNAMENT_OPTIONS.keys()),
-        help="El modelo aprendio del historico que el tipo de torneo afecta el resultado "
-             "(ej. mundiales suelen ser mas cerrados que amistosos). Elegi la categoria real.",
-    )
-    tournament = TOURNAMENT_OPTIONS[tournament_label]
-    is_neutral = st.checkbox("Cancha neutral")
 
-    st.divider()
-    st.subheader("Pesos del ensemble")
-    weight_bayes = st.slider("Peso Bayesiano", 0.0, 1.0, ENSEMBLE_WEIGHT_BAYESIAN, 0.05)
-    weight_xgb = round(1.0 - weight_bayes, 2)
-    st.caption(f"Peso XGBoost: {weight_xgb}")
-
-    st.divider()
-    st.subheader("Clima (opcional)")
-    use_weather = st.checkbox("Ajustar por clima del partido", value=False)
-    match_city = ""
-    match_date = pd.Timestamp.now().normalize()
-    if use_weather:
-        match_city = st.text_input("Ciudad de la sede", value="")
-        match_date = pd.Timestamp(st.date_input("Fecha del partido", value=pd.Timestamp.now().date()))
-        st.caption(
-            "Pronostico real solo disponible hasta ~16 dias a futuro (Open-Meteo, gratis). "
-            "El ajuste de goles esperados es una heuristica nuestra, no algo que el modelo aprendio de datos."
+def render_single_match(teams: list[str]) -> None:
+    with st.sidebar:
+        st.header("Configuracion del partido")
+        home_team = st.selectbox(
+            "Equipo local", teams,
+            index=teams.index("Argentina") if "Argentina" in teams else 0,
+            format_func=lambda t: f"{team_flag(t)} {t}",
         )
-
-    predict_clicked = st.button("Predecir", type="primary", use_container_width=True)
-
-if not predict_clicked:
-    st.info("Elegi dos selecciones en el menu lateral y presiona **Predecir**.")
-    st.stop()
-
-if home_team == away_team:
-    st.error("Elegi dos selecciones distintas.")
-    st.stop()
-
-predictor = get_predictor(weight_bayes, weight_xgb)
-pred = predictor.predict(
-    home_team=home_team,
-    away_team=away_team,
-    is_neutral=is_neutral,
-    tournament=tournament,
-)
-
-home_flag = team_flag(pred.home_team)
-away_flag = team_flag(pred.away_team)
-
-st.header(f"{home_flag} {pred.home_team}  vs  {pred.away_team} {away_flag}")
-st.caption(f"Torneo: {tournament_label} | Cancha neutral: {is_neutral}")
-
-# ── Ajuste por clima (si aplica) ──────────────────────────────────────────────
-weather_note = None
-poisson_adj = None
-if use_weather and match_city.strip():
-    weather = fetch_weather(match_city.strip(), match_date.strftime("%Y-%m-%d"))
-    if weather is None:
-        st.warning(
-            f"No se pudo obtener pronostico para '{match_city}' en esa fecha "
-            f"(ciudad no encontrada o fuera del rango de {MAX_FORECAST_DAYS} dias). "
-            "Se muestra la prediccion sin ajuste por clima."
+        away_team = st.selectbox(
+            "Equipo visitante", teams,
+            index=teams.index("Brazil") if "Brazil" in teams else 1,
+            format_func=lambda t: f"{team_flag(t)} {t}",
         )
-    else:
-        factor, notes = weather_adjustment(weather)
-        if notes:
-            lh_adj = pred.expected_goals_home * factor
-            la_adj = pred.expected_goals_away * factor
-            poisson_adj = predict_from_lambdas(lh_adj, la_adj)
-            weather_note = (match_city, match_date, notes, factor, lh_adj, la_adj)
+        tournament_label = st.selectbox(
+            "Contexto del partido",
+            list(TOURNAMENT_OPTIONS.keys()),
+            help="El modelo aprendio del historico que el tipo de torneo afecta el resultado "
+                 "(ej. mundiales suelen ser mas cerrados que amistosos). Elegi la categoria real.",
+        )
+        tournament = TOURNAMENT_OPTIONS[tournament_label]
+        is_neutral = st.checkbox("Cancha neutral")
+
+        st.divider()
+        st.subheader("Pesos del ensemble")
+        weight_bayes = st.slider("Peso Bayesiano", 0.0, 1.0, ENSEMBLE_WEIGHT_BAYESIAN, 0.05)
+        weight_xgb = round(1.0 - weight_bayes, 2)
+        st.caption(f"Peso XGBoost: {weight_xgb}")
+
+        st.divider()
+        st.subheader("Clima (opcional)")
+        use_weather = st.checkbox("Ajustar por clima del partido", value=False)
+        match_city = ""
+        match_date = pd.Timestamp.now().normalize()
+        if use_weather:
+            match_city = st.text_input("Ciudad de la sede", value="")
+            match_date = pd.Timestamp(st.date_input("Fecha del partido", value=pd.Timestamp.now().date()))
+            st.caption(
+                "Pronostico real solo disponible hasta ~16 dias a futuro (Open-Meteo, gratis). "
+                "El ajuste de goles esperados es una heuristica nuestra, no algo que el modelo aprendio de datos."
+            )
+
+        predict_clicked = st.button("Predecir", type="primary", use_container_width=True)
+
+    if not predict_clicked:
+        st.info("Elegi dos selecciones en el menu lateral y presiona **Predecir**.")
+        return
+
+    if home_team == away_team:
+        st.error("Elegi dos selecciones distintas.")
+        return
+
+    predictor = get_predictor(weight_bayes, weight_xgb)
+    pred = predictor.predict(
+        home_team=home_team,
+        away_team=away_team,
+        is_neutral=is_neutral,
+        tournament=tournament,
+    )
+
+    home_flag = team_flag(pred.home_team)
+    away_flag = team_flag(pred.away_team)
+
+    st.header(f"{home_flag} {pred.home_team}  vs  {pred.away_team} {away_flag}")
+    st.caption(f"Torneo: {tournament_label} | Cancha neutral: {is_neutral}")
+
+    # ── Ajuste por clima (si aplica) ──────────────────────────────────────────
+    weather_note = None
+    poisson_adj = None
+    if use_weather and match_city.strip():
+        weather = fetch_weather(match_city.strip(), match_date.strftime("%Y-%m-%d"))
+        if weather is None:
+            st.warning(
+                f"No se pudo obtener pronostico para '{match_city}' en esa fecha "
+                f"(ciudad no encontrada o fuera del rango de {MAX_FORECAST_DAYS} dias). "
+                "Se muestra la prediccion sin ajuste por clima."
+            )
         else:
-            st.caption(f"🌦️ Clima en {match_city} sin condiciones adversas relevantes — sin ajuste.")
+            factor, notes = weather_adjustment(weather)
+            if notes:
+                lh_adj = pred.expected_goals_home * factor
+                la_adj = pred.expected_goals_away * factor
+                poisson_adj = predict_from_lambdas(lh_adj, la_adj)
+                weather_note = (match_city, match_date, notes, factor, lh_adj, la_adj)
+            else:
+                st.caption(f"🌦️ Clima en {match_city} sin condiciones adversas relevantes — sin ajuste.")
 
-# ── KPIs principales ───────────────────────────────────────────────────────────
-outcomes = [
-    (pred.home_win, f"Gana {pred.home_team}", home_flag),
-    (pred.draw, "Empate", "🤝"),
-    (pred.away_win, f"Gana {pred.away_team}", away_flag),
-]
-favorite = max(outcomes, key=lambda o: o[0])
+    # ── KPIs principales ───────────────────────────────────────────────────────
+    outcomes = [
+        (pred.home_win, f"Gana {pred.home_team}", home_flag),
+        (pred.draw, "Empate", "🤝"),
+        (pred.away_win, f"Gana {pred.away_team}", away_flag),
+    ]
+    favorite = max(outcomes, key=lambda o: o[0])
 
-kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-with kpi1:
-    st.metric(f"{favorite[2]} Resultado mas probable", favorite[1], f"{favorite[0]:.1%}")
-with kpi2:
-    st.metric("Marcador mas probable", pred.most_likely_score)
-with kpi3:
-    st.metric(f"xG {pred.home_team}", f"{pred.expected_goals_home:.2f}")
-with kpi4:
-    st.metric(f"xG {pred.away_team}", f"{pred.expected_goals_away:.2f}")
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    with kpi1:
+        st.metric(f"{favorite[2]} Resultado mas probable", favorite[1], f"{favorite[0]:.1%}")
+    with kpi2:
+        st.metric("Marcador mas probable", pred.most_likely_score)
+    with kpi3:
+        st.metric(f"xG {pred.home_team}", f"{pred.expected_goals_home:.2f}")
+    with kpi4:
+        st.metric(f"xG {pred.away_team}", f"{pred.expected_goals_away:.2f}")
 
-summary_png = build_summary_image(pred, tournament_label)
-st.download_button(
-    "📥 Descargar resumen (PNG)",
-    data=summary_png,
-    file_name=f"{pred.home_team}_vs_{pred.away_team}.png".replace(" ", "_"),
-    mime="image/png",
+    summary_png = build_summary_image(pred, tournament_label)
+    st.download_button(
+        "📥 Descargar resumen (PNG)",
+        data=summary_png,
+        file_name=f"{pred.home_team}_vs_{pred.away_team}.png".replace(" ", "_"),
+        mime="image/png",
+    )
+
+    if weather_note is not None:
+        match_city_n, match_date_n, notes, factor, lh_adj, la_adj = weather_note
+        st.subheader("🌦️ Ajuste por clima (heuristica, no aprendida por el modelo)")
+        st.caption(
+            f"{match_city_n} el {match_date_n.date()}: " + ", ".join(notes) +
+            f". Factor aplicado a goles esperados: x{factor:.2f}"
+        )
+        wcol1, wcol2 = st.columns(2)
+        with wcol1:
+            st.metric("xG local (sin ajuste → con ajuste)",
+                      f"{lh_adj:.2f}", f"{lh_adj - pred.expected_goals_home:+.2f}")
+        with wcol2:
+            st.metric("xG visitante (sin ajuste → con ajuste)",
+                      f"{la_adj:.2f}", f"{la_adj - pred.expected_goals_away:+.2f}")
+        st.caption(
+            f"1X2 ajustado: Local {poisson_adj.home_win:.1%} | Empate {poisson_adj.draw:.1%} | "
+            f"Visitante {poisson_adj.away_win:.1%}  (original: {pred.home_win:.1%} / "
+            f"{pred.draw:.1%} / {pred.away_win:.1%})"
+        )
+
+    st.divider()
+
+    tab_resultado, tab_goles, tab_eventos, tab_h2h, tab_modelo = st.tabs(
+        ["📊 Resultado", "⚽ Goles", "📈 Eventos", "📜 Historial H2H", "🔍 Patrones & Modelo"]
+    )
+
+    # ── Tab: Resultado ─────────────────────────────────────────────────────────
+    with tab_resultado:
+        result_df = pd.DataFrame({
+            "Resultado": [f"Victoria {pred.home_team}", "Empate", f"Victoria {pred.away_team}"],
+            "Probabilidad": [pred.home_win, pred.draw, pred.away_win],
+        })
+        fig = px.bar(result_df, x="Resultado", y="Probabilidad", text_auto=".1%",
+                     color="Resultado", color_discrete_sequence=[HOME_COLOR, DRAW_COLOR, AWAY_COLOR])
+        fig.update_layout(yaxis_tickformat=".0%", showlegend=False, height=420,
+                           title="Resultado del partido")
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ── Tab: Goles ──────────────────────────────────────────────────────────────
+    with tab_goles:
+        col1, col2 = st.columns(2)
+        with col1:
+            xg_df = pd.DataFrame({
+                "Equipo": [pred.home_team, pred.away_team],
+                "xG": [pred.expected_goals_home, pred.expected_goals_away],
+            })
+            fig = px.bar(xg_df, x="Equipo", y="xG", text_auto=".2f", color="Equipo",
+                         color_discrete_sequence=[HOME_COLOR, AWAY_COLOR])
+            fig.update_layout(showlegend=False, height=380, title="Goles esperados (xG)")
+            st.plotly_chart(fig, use_container_width=True)
+
+        with col2:
+            markets_df = pd.DataFrame({
+                "Mercado": ["BTTS", "Over 0.5", "Over 1.5", "Over 2.5", "Over 3.5"],
+                "Probabilidad": [pred.btts, pred.over_0_5, pred.over_1_5, pred.over_2_5, pred.over_3_5],
+            })
+            fig = px.bar(markets_df, x="Mercado", y="Probabilidad", text_auto=".1%", color="Probabilidad",
+                         color_continuous_scale=ACCENT_SCALE)
+            fig.update_layout(yaxis_tickformat=".0%", height=380, coloraxis_showscale=False,
+                               title="Mercados de goles")
+            st.plotly_chart(fig, use_container_width=True)
+
+        st.subheader("Distribucion de marcadores")
+        scores = [(int(k.split("-")[0]), int(k.split("-")[1]), v) for k, v in pred.score_probabilities.items()]
+        max_goals = max(max(h, a) for h, a, _ in scores)
+        matrix = [[0.0] * (max_goals + 1) for _ in range(max_goals + 1)]
+        for h, a, p in scores:
+            matrix[h][a] = p
+        fig = go.Figure(data=go.Heatmap(
+            z=matrix,
+            x=[str(i) for i in range(max_goals + 1)],
+            y=[str(i) for i in range(max_goals + 1)],
+            colorscale=ACCENT_SCALE,
+            texttemplate="%{z:.1%}",
+            hovertemplate=f"{pred.home_team}: %{{y}}<br>{pred.away_team}: %{{x}}<br>Prob: %{{z:.1%}}<extra></extra>",
+        ))
+        fig.update_layout(
+            xaxis_title=f"Goles {pred.away_team}", yaxis_title=f"Goles {pred.home_team}",
+            height=420,
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ── Tab: Eventos ──────────────────────────────────────────────────────────────
+    with tab_eventos:
+        e = pred.events
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            fig = go.Figure(data=[go.Pie(
+                labels=[pred.home_team, pred.away_team],
+                values=[e.home_possession, e.away_possession],
+                hole=0.5,
+                marker_colors=[HOME_COLOR, AWAY_COLOR],
+            )])
+            fig.update_layout(title="Posesion", height=340)
+            st.plotly_chart(fig, use_container_width=True)
+
+        with col2:
+            shots_df = pd.DataFrame({
+                "Equipo": [pred.home_team, pred.away_team, pred.home_team, pred.away_team],
+                "Tipo": ["Tiros totales", "Tiros totales", "A puerta", "A puerta"],
+                "Valor": [e.home_shots, e.away_shots, e.home_shots_on_target, e.away_shots_on_target],
+            })
+            fig = px.bar(shots_df, x="Tipo", y="Valor", color="Equipo", barmode="group",
+                         color_discrete_sequence=[HOME_COLOR, AWAY_COLOR])
+            fig.update_layout(title="Tiros", height=340)
+            st.plotly_chart(fig, use_container_width=True)
+
+        with col3:
+            cards_df = pd.DataFrame({
+                "Equipo": [pred.home_team, pred.away_team],
+                "Amarillas esperadas": [e.home_yellow_cards, e.away_yellow_cards],
+            })
+            fig = px.bar(cards_df, x="Equipo", y="Amarillas esperadas", text_auto=".2f", color="Equipo",
+                         color_discrete_sequence=[CARD_COLOR, "#FFA94D"])
+            fig.update_layout(title="Tarjetas amarillas", height=340, showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+
+        st.caption(
+            f"Corners esperados: {e.home_corners:.1f} - {e.away_corners:.1f}  |  "
+            f"P(roja) {pred.home_team}: {e.home_red_card_prob:.1%}  |  "
+            f"P(roja) {pred.away_team}: {e.away_red_card_prob:.1%}"
+        )
+
+    # ── Tab: Historial H2H ────────────────────────────────────────────────────────
+    with tab_h2h:
+        h2h_df = get_h2h_matches(predictor._feature_df, pred.home_team, pred.away_team, n=10)
+        if h2h_df.empty:
+            st.caption(f"No hay enfrentamientos directos registrados entre {pred.home_team} y {pred.away_team}.")
+        else:
+            wins_h = int(((h2h_df["home_team"] == pred.home_team) & (h2h_df["home_score"] > h2h_df["away_score"])).sum()
+                         + ((h2h_df["away_team"] == pred.home_team) & (h2h_df["away_score"] > h2h_df["home_score"])).sum())
+            wins_a = int(((h2h_df["home_team"] == pred.away_team) & (h2h_df["home_score"] > h2h_df["away_score"])).sum()
+                         + ((h2h_df["away_team"] == pred.away_team) & (h2h_df["away_score"] > h2h_df["home_score"])).sum())
+            draws = len(h2h_df) - wins_h - wins_a
+
+            st.caption(f"Ultimos {len(h2h_df)} enfrentamientos directos (cualquier sede)")
+            c1, c2, c3 = st.columns(3)
+            c1.metric(f"{home_flag} Victorias {pred.home_team}", wins_h)
+            c2.metric("🤝 Empates", draws)
+            c3.metric(f"{away_flag} Victorias {pred.away_team}", wins_a)
+
+            display_df = h2h_df.copy()
+            display_df["Fecha"] = pd.to_datetime(display_df["date"]).dt.strftime("%d/%m/%Y")
+            display_df["Resultado"] = (
+                display_df["home_team"] + " " + display_df["home_score"].astype(int).astype(str)
+                + " - " + display_df["away_score"].astype(int).astype(str) + " " + display_df["away_team"]
+            )
+            display_df = display_df.rename(columns={"tournament": "Torneo"})
+            st.dataframe(
+                display_df[["Fecha", "Resultado", "Torneo"]],
+                use_container_width=True, hide_index=True,
+            )
+
+    # ── Tab: Patrones & Modelo ───────────────────────────────────────────────────
+    with tab_modelo:
+        if pred.patterns is not None and pred.patterns.n_similar_matches >= 10:
+            st.subheader("Patrones historicos similares")
+            pat = pred.patterns
+            st.caption(f"{pat.elo_bucket_label} — {pat.n_similar_matches} partidos similares encontrados")
+            strong = [p for p in pat.patterns if p.strength in ("FUERTE", "MODERADO")]
+            if strong:
+                pat_df = pd.DataFrame({
+                    "Patron": [p.description for p in strong],
+                    "Frecuencia": [p.frequency for p in strong],
+                    "Fuerza": [p.strength for p in strong],
+                }).sort_values("Frecuencia", ascending=True)
+                fig = px.bar(pat_df, x="Frecuencia", y="Patron", color="Fuerza", orientation="h",
+                             text_auto=".1%", color_discrete_map={"FUERTE": HOME_COLOR, "MODERADO": DRAW_COLOR})
+                fig.update_layout(xaxis_tickformat=".0%", height=320)
+                st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.caption("No hay suficientes partidos historicos similares para detectar patrones.")
+
+        st.divider()
+        st.subheader("Detalle del modelo (Bayesiano vs XGBoost)")
+        detail_df = pd.DataFrame({
+            "Modelo": ["Bayesiano", "XGBoost", "Ensemble"],
+            "xG local": [pred.lambda_bayes_home, pred.lambda_xgb_home, pred.expected_goals_home],
+            "xG visitante": [pred.lambda_bayes_away, pred.lambda_xgb_away, pred.expected_goals_away],
+            "Peso": [f"{pred.model_weights['bayesian']:.0%}", f"{pred.model_weights['xgboost']:.0%}", "100%"],
+        })
+        st.dataframe(detail_df, use_container_width=True, hide_index=True)
+        st.caption("Tiros, corners y tarjetas son estimaciones estadisticas basadas en xG, no datos reales.")
+
+
+def render_quiniela(teams: list[str]) -> None:
+    with st.sidebar:
+        st.header("Configuracion de la quiniela")
+        tournament_label = st.selectbox(
+            "Contexto (aplica a todos los partidos)",
+            list(TOURNAMENT_OPTIONS.keys()),
+        )
+        tournament = TOURNAMENT_OPTIONS[tournament_label]
+        is_neutral = st.checkbox("Todas a cancha neutral")
+
+        st.divider()
+        st.subheader("Pesos del ensemble")
+        weight_bayes = st.slider("Peso Bayesiano", 0.0, 1.0, ENSEMBLE_WEIGHT_BAYESIAN, 0.05, key="q_weight")
+        weight_xgb = round(1.0 - weight_bayes, 2)
+        st.caption(f"Peso XGBoost: {weight_xgb}")
+
+    st.subheader("Armar la fecha")
+    st.caption("Agrega filas y elegi local/visitante para cada partido. Hasta 20 partidos por tanda.")
+
+    if "quiniela_rows" not in st.session_state:
+        st.session_state.quiniela_rows = pd.DataFrame(
+            {"Local": ["Argentina", "Brazil"], "Visitante": ["Brazil", "Argentina"]}
+        )
+
+    edited = st.data_editor(
+        st.session_state.quiniela_rows,
+        num_rows="dynamic",
+        use_container_width=True,
+        column_config={
+            "Local": st.column_config.SelectboxColumn("Local", options=teams, required=True),
+            "Visitante": st.column_config.SelectboxColumn("Visitante", options=teams, required=True),
+        },
+        key="quiniela_editor",
+    )
+    st.session_state.quiniela_rows = edited
+
+    predict_clicked = st.button("Predecir quiniela", type="primary")
+
+    if not predict_clicked:
+        st.info("Completa los partidos arriba y presiona **Predecir quiniela**.")
+        return
+
+    valid_rows = [
+        (r["Local"], r["Visitante"]) for _, r in edited.iterrows()
+        if pd.notna(r["Local"]) and pd.notna(r["Visitante"]) and r["Local"] != r["Visitante"]
+    ]
+    if not valid_rows:
+        st.error("No hay partidos validos (local y visitante deben ser distintos).")
+        return
+
+    predictor = get_predictor(weight_bayes, weight_xgb)
+
+    records = []
+    for home, away in valid_rows:
+        pred = predictor.predict(home_team=home, away_team=away, is_neutral=is_neutral, tournament=tournament)
+        outcomes = [
+            (pred.home_win, f"{team_flag(home)} {home}"),
+            (pred.draw, "Empate"),
+            (pred.away_win, f"{team_flag(away)} {away}"),
+        ]
+        favorite_label, favorite_prob = max(((o[1], o[0]) for o in outcomes), key=lambda x: x[1])
+        records.append({
+            "Partido": f"{team_flag(home)} {home} vs {away} {team_flag(away)}",
+            "1": pred.home_win,
+            "X": pred.draw,
+            "2": pred.away_win,
+            "Favorito": favorite_label,
+            "Marcador probable": pred.most_likely_score,
+            "xG local": pred.expected_goals_home,
+            "xG visitante": pred.expected_goals_away,
+            "BTTS": pred.btts,
+        })
+
+    st.divider()
+    st.subheader(f"Resultados ({len(records)} partidos)")
+
+    results_df = pd.DataFrame(records)
+    st.dataframe(
+        results_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "1": st.column_config.ProgressColumn("1 (Local)", min_value=0, max_value=1, format="percent"),
+            "X": st.column_config.ProgressColumn("X (Empate)", min_value=0, max_value=1, format="percent"),
+            "2": st.column_config.ProgressColumn("2 (Visitante)", min_value=0, max_value=1, format="percent"),
+            "BTTS": st.column_config.ProgressColumn("BTTS", min_value=0, max_value=1, format="percent"),
+            "xG local": st.column_config.NumberColumn("xG local", format="%.2f"),
+            "xG visitante": st.column_config.NumberColumn("xG visitante", format="%.2f"),
+        },
+    )
+
+    csv = results_df.to_csv(index=False).encode("utf-8")
+    st.download_button("📥 Descargar quiniela (CSV)", data=csv, file_name="quiniela.csv", mime="text/csv")
+
+
+st.title("⚽ Predictor de Futbol Internacional")
+st.caption("Ensemble Bayesiano (PyMC) + XGBoost Poisson sobre 49k+ partidos historicos (1872-presente)")
+
+mode = st.radio(
+    "Modo", ["Partido individual", "Quiniela (varios partidos)"],
+    horizontal=True, label_visibility="collapsed",
 )
-
-if weather_note is not None:
-    match_city_n, match_date_n, notes, factor, lh_adj, la_adj = weather_note
-    st.subheader("🌦️ Ajuste por clima (heuristica, no aprendida por el modelo)")
-    st.caption(
-        f"{match_city_n} el {match_date_n.date()}: " + ", ".join(notes) +
-        f". Factor aplicado a goles esperados: x{factor:.2f}"
-    )
-    wcol1, wcol2 = st.columns(2)
-    with wcol1:
-        st.metric("xG local (sin ajuste → con ajuste)",
-                  f"{lh_adj:.2f}", f"{lh_adj - pred.expected_goals_home:+.2f}")
-    with wcol2:
-        st.metric("xG visitante (sin ajuste → con ajuste)",
-                  f"{la_adj:.2f}", f"{la_adj - pred.expected_goals_away:+.2f}")
-    st.caption(
-        f"1X2 ajustado: Local {poisson_adj.home_win:.1%} | Empate {poisson_adj.draw:.1%} | "
-        f"Visitante {poisson_adj.away_win:.1%}  (original: {pred.home_win:.1%} / "
-        f"{pred.draw:.1%} / {pred.away_win:.1%})"
-    )
-
 st.divider()
 
-tab_resultado, tab_goles, tab_eventos, tab_h2h, tab_modelo = st.tabs(
-    ["📊 Resultado", "⚽ Goles", "📈 Eventos", "📜 Historial H2H", "🔍 Patrones & Modelo"]
-)
+teams = get_team_list()
 
-# ── Tab: Resultado ─────────────────────────────────────────────────────────────
-with tab_resultado:
-    result_df = pd.DataFrame({
-        "Resultado": [f"Victoria {pred.home_team}", "Empate", f"Victoria {pred.away_team}"],
-        "Probabilidad": [pred.home_win, pred.draw, pred.away_win],
-    })
-    fig = px.bar(result_df, x="Resultado", y="Probabilidad", text_auto=".1%",
-                 color="Resultado", color_discrete_sequence=[HOME_COLOR, DRAW_COLOR, AWAY_COLOR])
-    fig.update_layout(yaxis_tickformat=".0%", showlegend=False, height=420,
-                       title="Resultado del partido")
-    st.plotly_chart(fig, use_container_width=True)
-
-# ── Tab: Goles ──────────────────────────────────────────────────────────────────
-with tab_goles:
-    col1, col2 = st.columns(2)
-    with col1:
-        xg_df = pd.DataFrame({
-            "Equipo": [pred.home_team, pred.away_team],
-            "xG": [pred.expected_goals_home, pred.expected_goals_away],
-        })
-        fig = px.bar(xg_df, x="Equipo", y="xG", text_auto=".2f", color="Equipo",
-                     color_discrete_sequence=[HOME_COLOR, AWAY_COLOR])
-        fig.update_layout(showlegend=False, height=380, title="Goles esperados (xG)")
-        st.plotly_chart(fig, use_container_width=True)
-
-    with col2:
-        markets_df = pd.DataFrame({
-            "Mercado": ["BTTS", "Over 0.5", "Over 1.5", "Over 2.5", "Over 3.5"],
-            "Probabilidad": [pred.btts, pred.over_0_5, pred.over_1_5, pred.over_2_5, pred.over_3_5],
-        })
-        fig = px.bar(markets_df, x="Mercado", y="Probabilidad", text_auto=".1%", color="Probabilidad",
-                     color_continuous_scale=ACCENT_SCALE)
-        fig.update_layout(yaxis_tickformat=".0%", height=380, coloraxis_showscale=False,
-                           title="Mercados de goles")
-        st.plotly_chart(fig, use_container_width=True)
-
-    st.subheader("Distribucion de marcadores")
-    scores = [(int(k.split("-")[0]), int(k.split("-")[1]), v) for k, v in pred.score_probabilities.items()]
-    max_goals = max(max(h, a) for h, a, _ in scores)
-    matrix = [[0.0] * (max_goals + 1) for _ in range(max_goals + 1)]
-    for h, a, p in scores:
-        matrix[h][a] = p
-    fig = go.Figure(data=go.Heatmap(
-        z=matrix,
-        x=[str(i) for i in range(max_goals + 1)],
-        y=[str(i) for i in range(max_goals + 1)],
-        colorscale=ACCENT_SCALE,
-        texttemplate="%{z:.1%}",
-        hovertemplate=f"{pred.home_team}: %{{y}}<br>{pred.away_team}: %{{x}}<br>Prob: %{{z:.1%}}<extra></extra>",
-    ))
-    fig.update_layout(
-        xaxis_title=f"Goles {pred.away_team}", yaxis_title=f"Goles {pred.home_team}",
-        height=420,
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-# ── Tab: Eventos ────────────────────────────────────────────────────────────────
-with tab_eventos:
-    e = pred.events
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        fig = go.Figure(data=[go.Pie(
-            labels=[pred.home_team, pred.away_team],
-            values=[e.home_possession, e.away_possession],
-            hole=0.5,
-            marker_colors=[HOME_COLOR, AWAY_COLOR],
-        )])
-        fig.update_layout(title="Posesion", height=340)
-        st.plotly_chart(fig, use_container_width=True)
-
-    with col2:
-        shots_df = pd.DataFrame({
-            "Equipo": [pred.home_team, pred.away_team, pred.home_team, pred.away_team],
-            "Tipo": ["Tiros totales", "Tiros totales", "A puerta", "A puerta"],
-            "Valor": [e.home_shots, e.away_shots, e.home_shots_on_target, e.away_shots_on_target],
-        })
-        fig = px.bar(shots_df, x="Tipo", y="Valor", color="Equipo", barmode="group",
-                     color_discrete_sequence=[HOME_COLOR, AWAY_COLOR])
-        fig.update_layout(title="Tiros", height=340)
-        st.plotly_chart(fig, use_container_width=True)
-
-    with col3:
-        cards_df = pd.DataFrame({
-            "Equipo": [pred.home_team, pred.away_team],
-            "Amarillas esperadas": [e.home_yellow_cards, e.away_yellow_cards],
-        })
-        fig = px.bar(cards_df, x="Equipo", y="Amarillas esperadas", text_auto=".2f", color="Equipo",
-                     color_discrete_sequence=[CARD_COLOR, "#FFA94D"])
-        fig.update_layout(title="Tarjetas amarillas", height=340, showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
-
-    st.caption(
-        f"Corners esperados: {e.home_corners:.1f} - {e.away_corners:.1f}  |  "
-        f"P(roja) {pred.home_team}: {e.home_red_card_prob:.1%}  |  "
-        f"P(roja) {pred.away_team}: {e.away_red_card_prob:.1%}"
-    )
-
-# ── Tab: Historial H2H ────────────────────────────────────────────────────────
-with tab_h2h:
-    h2h_df = get_h2h_matches(predictor._feature_df, pred.home_team, pred.away_team, n=10)
-    if h2h_df.empty:
-        st.caption(f"No hay enfrentamientos directos registrados entre {pred.home_team} y {pred.away_team}.")
-    else:
-        wins_h = int(((h2h_df["home_team"] == pred.home_team) & (h2h_df["home_score"] > h2h_df["away_score"])).sum()
-                     + ((h2h_df["away_team"] == pred.home_team) & (h2h_df["away_score"] > h2h_df["home_score"])).sum())
-        wins_a = int(((h2h_df["home_team"] == pred.away_team) & (h2h_df["home_score"] > h2h_df["away_score"])).sum()
-                     + ((h2h_df["away_team"] == pred.away_team) & (h2h_df["away_score"] > h2h_df["home_score"])).sum())
-        draws = len(h2h_df) - wins_h - wins_a
-
-        st.caption(f"Ultimos {len(h2h_df)} enfrentamientos directos (cualquier sede)")
-        c1, c2, c3 = st.columns(3)
-        c1.metric(f"{home_flag} Victorias {pred.home_team}", wins_h)
-        c2.metric("🤝 Empates", draws)
-        c3.metric(f"{away_flag} Victorias {pred.away_team}", wins_a)
-
-        display_df = h2h_df.copy()
-        display_df["Fecha"] = pd.to_datetime(display_df["date"]).dt.strftime("%d/%m/%Y")
-        display_df["Resultado"] = (
-            display_df["home_team"] + " " + display_df["home_score"].astype(int).astype(str)
-            + " - " + display_df["away_score"].astype(int).astype(str) + " " + display_df["away_team"]
-        )
-        display_df = display_df.rename(columns={"tournament": "Torneo"})
-        st.dataframe(
-            display_df[["Fecha", "Resultado", "Torneo"]],
-            use_container_width=True, hide_index=True,
-        )
-
-# ── Tab: Patrones & Modelo ───────────────────────────────────────────────────────
-with tab_modelo:
-    if pred.patterns is not None and pred.patterns.n_similar_matches >= 10:
-        st.subheader("Patrones historicos similares")
-        pat = pred.patterns
-        st.caption(f"{pat.elo_bucket_label} — {pat.n_similar_matches} partidos similares encontrados")
-        strong = [p for p in pat.patterns if p.strength in ("FUERTE", "MODERADO")]
-        if strong:
-            pat_df = pd.DataFrame({
-                "Patron": [p.description for p in strong],
-                "Frecuencia": [p.frequency for p in strong],
-                "Fuerza": [p.strength for p in strong],
-            }).sort_values("Frecuencia", ascending=True)
-            fig = px.bar(pat_df, x="Frecuencia", y="Patron", color="Fuerza", orientation="h",
-                         text_auto=".1%", color_discrete_map={"FUERTE": HOME_COLOR, "MODERADO": DRAW_COLOR})
-            fig.update_layout(xaxis_tickformat=".0%", height=320)
-            st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.caption("No hay suficientes partidos historicos similares para detectar patrones.")
-
-    st.divider()
-    st.subheader("Detalle del modelo (Bayesiano vs XGBoost)")
-    detail_df = pd.DataFrame({
-        "Modelo": ["Bayesiano", "XGBoost", "Ensemble"],
-        "xG local": [pred.lambda_bayes_home, pred.lambda_xgb_home, pred.expected_goals_home],
-        "xG visitante": [pred.lambda_bayes_away, pred.lambda_xgb_away, pred.expected_goals_away],
-        "Peso": [f"{pred.model_weights['bayesian']:.0%}", f"{pred.model_weights['xgboost']:.0%}", "100%"],
-    })
-    st.dataframe(detail_df, use_container_width=True, hide_index=True)
-    st.caption("Tiros, corners y tarjetas son estimaciones estadisticas basadas en xG, no datos reales.")
+if mode == "Partido individual":
+    render_single_match(teams)
+else:
+    render_quiniela(teams)
