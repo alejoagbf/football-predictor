@@ -26,12 +26,14 @@ GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 MAX_FORECAST_DAYS = 16
 
-# ── Paleta de colores consistente ─────────────────────────────────────────────
-HOME_COLOR = "#2E86AB"
-AWAY_COLOR = "#E63946"
-DRAW_COLOR = "#6C757D"
-ACCENT_SCALE = "Blues"
-CARD_COLOR = "#FFD60A"
+# ── Paleta de colores consistente (estetica 7a0: crema/rojo-naranja/dorado) ───
+HOME_COLOR = "#2F6B3C"
+AWAY_COLOR = "#E8462B"
+DRAW_COLOR = "#C8A24B"
+ACCENT_SCALE = "YlOrBr"
+CARD_COLOR = "#C8A24B"
+CREAM_BG = "#F3ECD8"
+INK_TEXT = "#1B1A17"
 
 # ── Banderas ───────────────────────────────────────────────────────────────────
 FLAG_OVERRIDES = {
@@ -137,7 +139,8 @@ def weather_adjustment(weather: dict) -> tuple[float, list[str]]:
 def build_summary_image(pred: MatchPrediction, tournament_label: str) -> bytes:
     """Render a shareable PNG summary card for the prediction."""
     W, H = 900, 540
-    bg = (14, 17, 23)
+    bg = (243, 236, 216)
+    ink = (27, 26, 23)
     img = Image.new("RGB", (W, H), bg)
     draw = ImageDraw.Draw(img)
 
@@ -149,21 +152,21 @@ def build_summary_image(pred: MatchPrediction, tournament_label: str) -> bytes:
     f_big = ImageFont.truetype(bold_path, 26)
     f_footer = ImageFont.truetype(reg_path, 14)
 
-    draw.text((40, 30), f"{pred.home_team} vs {pred.away_team}", font=f_title, fill="white")
-    draw.text((40, 75), tournament_label, font=f_sub, fill=(160, 160, 160))
+    draw.text((40, 30), f"{pred.home_team} vs {pred.away_team}", font=f_title, fill=ink)
+    draw.text((40, 75), tournament_label, font=f_sub, fill=(110, 104, 90))
 
     bars = [
-        (f"Gana {pred.home_team}", pred.home_win, (46, 134, 171)),
-        ("Empate", pred.draw, (108, 117, 125)),
-        (f"Gana {pred.away_team}", pred.away_win, (230, 57, 70)),
+        (f"Gana {pred.home_team}", pred.home_win, (47, 107, 60)),
+        ("Empate", pred.draw, (200, 162, 75)),
+        (f"Gana {pred.away_team}", pred.away_win, (232, 70, 43)),
     ]
     bar_y = 130
     bar_width = 740
     for label, prob, color in bars:
-        draw.text((40, bar_y), label, font=f_label, fill="white")
-        draw.text((40 + bar_width - 60, bar_y), f"{prob:.1%}", font=f_label, fill="white")
+        draw.text((40, bar_y), label, font=f_label, fill=ink)
+        draw.text((40 + bar_width - 60, bar_y), f"{prob:.1%}", font=f_label, fill=ink)
         bar_top = bar_y + 24
-        draw.rectangle([40, bar_top, 40 + bar_width, bar_top + 20], fill=(40, 44, 52))
+        draw.rectangle([40, bar_top, 40 + bar_width, bar_top + 20], fill=(225, 216, 192))
         draw.rectangle([40, bar_top, 40 + int(bar_width * prob), bar_top + 20], fill=color)
         bar_y += 65
 
@@ -172,16 +175,16 @@ def build_summary_image(pred: MatchPrediction, tournament_label: str) -> bytes:
         (40, y2),
         f"xG {pred.home_team}: {pred.expected_goals_home:.2f}    "
         f"xG {pred.away_team}: {pred.expected_goals_away:.2f}",
-        font=f_label, fill="white",
+        font=f_label, fill=ink,
     )
-    draw.text((40, y2 + 35), f"Marcador mas probable: {pred.most_likely_score}", font=f_big, fill="white")
+    draw.text((40, y2 + 35), f"Marcador mas probable: {pred.most_likely_score}", font=f_big, fill=ink)
     draw.text(
         (40, y2 + 80),
         f"BTTS {pred.btts:.0%}   Over 1.5 {pred.over_1_5:.0%}   Over 2.5 {pred.over_2_5:.0%}",
-        font=f_label, fill=(200, 200, 200),
+        font=f_label, fill=(90, 84, 72),
     )
 
-    draw.text((40, H - 35), "Generado con Predictor de Futbol Internacional", font=f_footer, fill=(110, 110, 110))
+    draw.text((40, H - 35), "Generado con Predictor de Futbol Internacional", font=f_footer, fill=(140, 132, 114))
 
     buf = io.BytesIO()
     img.save(buf, format="PNG")
@@ -189,6 +192,63 @@ def build_summary_image(pred: MatchPrediction, tournament_label: str) -> bytes:
 
 
 st.set_page_config(page_title="Predictor de Futbol Internacional", page_icon="⚽", layout="wide")
+
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Anton&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap');
+
+    html, body, [class*="css"], [data-testid="stAppViewContainer"] {
+        font-family: 'Hanken Grotesk', sans-serif;
+    }
+
+    h1, h2, h3 {
+        font-family: 'Anton', sans-serif !important;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    [data-testid="stMetricValue"] {
+        font-family: 'Anton', sans-serif !important;
+    }
+
+    [data-testid="stMetricLabel"] {
+        font-family: 'Hanken Grotesk', sans-serif !important;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+
+    div.stButton > button, div.stDownloadButton > button {
+        font-family: 'Anton', sans-serif;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        border-radius: 2px;
+        background-color: #E8462B;
+        color: #FFFFFF;
+        border: none;
+    }
+    div.stButton > button:hover, div.stDownloadButton > button:hover {
+        background-color: #C93A22;
+        color: #FFFFFF;
+    }
+
+    [data-testid="stTabs"] [data-baseweb="tab"] {
+        font-family: 'Hanken Grotesk', sans-serif;
+        font-weight: 700;
+        text-transform: uppercase;
+        font-size: 0.85rem;
+        letter-spacing: 0.3px;
+    }
+
+    [data-testid="stSidebar"] {
+        background-color: #FFFFFF;
+        border-right: 1px solid #E3DCC8;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 @st.cache_resource(show_spinner="Cargando modelos entrenados...")
