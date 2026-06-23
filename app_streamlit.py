@@ -469,13 +469,22 @@ def render_single_match(teams: list[str]) -> None:
 
         predict_clicked = st.button("Predecir", type="primary", use_container_width=True)
 
-    if not predict_clicked:
+    if "single_show_results" not in st.session_state:
+        st.session_state.single_show_results = False
+    if predict_clicked:
+        st.session_state.single_show_results = True
+
+    if not st.session_state.single_show_results:
         render_landing_hero("Elegi dos selecciones en el menu lateral y presiona **Predecir**.")
         return
 
     if home_team == away_team:
         st.error("Elegi dos selecciones distintas.")
         return
+
+    if st.button("← Volver al panel"):
+        st.session_state.single_show_results = False
+        st.rerun()
 
     predictor = get_predictor(weight_bayes, weight_xgb)
     pred = predictor.predict(
@@ -842,3 +851,16 @@ if mode == "Partido individual":
     render_single_match(teams)
 else:
     render_quiniela(teams)
+
+st.divider()
+st.markdown(
+    _html("""
+    <div style="text-align:center; padding: 0.5rem 0 1rem 0;">
+        <span style="font-size:0.85rem; color:#6E6650;">
+            Desarrollado por 🇨🇴 <strong>Alejandro Ortiz Marin</strong>
+            &middot; Desarrollador de Software &middot; Universidad de Tel Aviv
+        </span>
+    </div>
+    """),
+    unsafe_allow_html=True,
+)
