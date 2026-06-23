@@ -146,6 +146,17 @@ def get_team_list() -> list[str]:
     return teams
 
 
+@st.cache_data
+def get_h2h_matches(_df: pd.DataFrame, home: str, away: str, n: int = 10) -> pd.DataFrame:
+    """Most recent *n* matches played directly between *home* and *away* (any venue)."""
+    mask = (
+        ((_df["home_team"] == home) & (_df["away_team"] == away))
+        | ((_df["home_team"] == away) & (_df["away_team"] == home))
+    )
+    h2h = _df[mask].sort_values("date", ascending=False).head(n)
+    return h2h[["date", "home_team", "away_team", "home_score", "away_score", "tournament"]].copy()
+
+
 st.title("⚽ Predictor de Futbol Internacional")
 st.caption("Ensemble Bayesiano (PyMC) + XGBoost Poisson sobre 49k+ partidos historicos (1872-presente)")
 
@@ -286,8 +297,8 @@ if weather_note is not None:
 
 st.divider()
 
-tab_resultado, tab_goles, tab_eventos, tab_modelo = st.tabs(
-    ["📊 Resultado", "⚽ Goles", "📈 Eventos", "🔍 Patrones & Modelo"]
+tab_resultado, tab_goles, tab_eventos, tab_h2h, tab_modelo = st.tabs(
+    ["📊 Resultado", "⚽ Goles", "📈 Eventos", "📜 Historial H2H", "🔍 Patrones & Modelo"]
 )
 
 # ── Tab: Resultado ─────────────────────────────────────────────────────────────
@@ -387,6 +398,36 @@ with tab_eventos:
         f"P(roja) {pred.home_team}: {e.home_red_card_prob:.1%}  |  "
         f"P(roja) {pred.away_team}: {e.away_red_card_prob:.1%}"
     )
+
+# ── Tab: Historial H2H ────────────────────────────────────────────────────────
+with tab_h2h:
+    h2h_df = get_h2h_matches(predictor._feature_df, pred.home_team, pred.away_team, n=10)
+    if h2h_df.empty:
+        st.caption(f"No hay enfrentamientos directos registrados entre {pred.home_team} y {pred.away_team}.")
+    else:
+        wins_h = int(((h2h_df["home_team"] == pred.home_team) & (h2h_df["home_score"] > h2h_df["away_score"])).sum()
+                     + ((h2h_df["away_team"] == pred.home_team) & (h2h_df["away_score"] > h2h_df["home_score"])).sum())
+        wins_a = int(((h2h_df["home_team"] == pred.away_team) & (h2h_df["home_score"] > h2h_df["away_score"])).sum()
+                     + ((h2h_df["away_team"] == pred.away_team) & (h2h_df["away_score"] > h2h_df["home_score"])).sum())
+        draws = len(h2h_df) - wins_h - wins_a
+
+        st.caption(f"Ultimos {len(h2h_df)} enfrentamientos directos (cualquier sede)")
+        c1, c2, c3 = st.columns(3)
+        c1.metric(f"{home_flag} Victorias {pred.home_team}", wins_h)
+        c2.metric("🤝 Empates", draws)
+        c3.metric(f"{away_flag} Victorias {pred.away_team}", wins_a)
+
+        display_df = h2h_df.copy()
+        display_df["Fecha"] = pd.to_datetime(display_df["date"]).dt.strftime("%d/%m/%Y")
+        display_df["Resultado"] = (
+            display_df["home_team"] + " " + display_df["home_score"].astype(int).astype(str)
+            + " - " + display_df["away_score"].astype(int).astype(str) + " " + display_df["away_team"]
+        )
+        display_df = display_df.rename(columns={"tournament": "Torneo"})
+        st.dataframe(
+            display_df[["Fecha", "Resultado", "Torneo"]],
+            use_container_width=True, hide_index=True,
+        )
 
 # ── Tab: Patrones & Modelo ───────────────────────────────────────────────────────
 with tab_modelo:
