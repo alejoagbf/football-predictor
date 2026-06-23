@@ -31,6 +31,9 @@ jobs:
       - name: Refresh dataset and retrain
         run: python train.py --no-optimize --force-download
 
+      - name: Sanity check — reload models and predict
+        run: python -c "from src.prediction.predictor import MatchPredictor; p = MatchPredictor.load(); print(p.predict('Argentina', 'Brazil'))"
+
       - name: Commit and push if data changed
         run: |
           git config user.name "github-actions[bot]"
