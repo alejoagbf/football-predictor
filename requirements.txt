@@ -19,3 +19,4 @@ pytensor==3.0.7
 streamlit==1.58.0
 plotly==6.8.0
 pycountry==26.2.16
+Pillow==12.1.1

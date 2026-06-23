@@ -7,16 +7,20 @@ Uso:
 
 from __future__ import annotations
 
+import io
+
+import matplotlib.font_manager as fm
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import pycountry
 import requests
 import streamlit as st
+from PIL import Image, ImageDraw, ImageFont
 
 from src.config import ENSEMBLE_WEIGHT_BAYESIAN, ENSEMBLE_WEIGHT_XGBOOST
 from src.prediction.poisson import predict_from_lambdas
-from src.prediction.predictor import MatchPredictor
+from src.prediction.predictor import MatchPredictor, MatchPrediction
 
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
@@ -128,6 +132,60 @@ def weather_adjustment(weather: dict) -> tuple[float, list[str]]:
         factor *= 0.97
         notes.append(f"viento fuerte ({weather['wind']:.0f} km/h)")
     return factor, notes
+
+
+def build_summary_image(pred: MatchPrediction, tournament_label: str) -> bytes:
+    """Render a shareable PNG summary card for the prediction."""
+    W, H = 900, 540
+    bg = (14, 17, 23)
+    img = Image.new("RGB", (W, H), bg)
+    draw = ImageDraw.Draw(img)
+
+    bold_path = fm.findfont(fm.FontProperties(family="DejaVu Sans", weight="bold"))
+    reg_path = fm.findfont(fm.FontProperties(family="DejaVu Sans"))
+    f_title = ImageFont.truetype(bold_path, 32)
+    f_sub = ImageFont.truetype(reg_path, 18)
+    f_label = ImageFont.truetype(reg_path, 17)
+    f_big = ImageFont.truetype(bold_path, 26)
+    f_footer = ImageFont.truetype(reg_path, 14)
+
+    draw.text((40, 30), f"{pred.home_team} vs {pred.away_team}", font=f_title, fill="white")
+    draw.text((40, 75), tournament_label, font=f_sub, fill=(160, 160, 160))
+
+    bars = [
+        (f"Gana {pred.home_team}", pred.home_win, (46, 134, 171)),
+        ("Empate", pred.draw, (108, 117, 125)),
+        (f"Gana {pred.away_team}", pred.away_win, (230, 57, 70)),
+    ]
+    bar_y = 130
+    bar_width = 740
+    for label, prob, color in bars:
+        draw.text((40, bar_y), label, font=f_label, fill="white")
+        draw.text((40 + bar_width - 60, bar_y), f"{prob:.1%}", font=f_label, fill="white")
+        bar_top = bar_y + 24
+        draw.rectangle([40, bar_top, 40 + bar_width, bar_top + 20], fill=(40, 44, 52))
+        draw.rectangle([40, bar_top, 40 + int(bar_width * prob), bar_top + 20], fill=color)
+        bar_y += 65
+
+    y2 = bar_y + 15
+    draw.text(
+        (40, y2),
+        f"xG {pred.home_team}: {pred.expected_goals_home:.2f}    "
+        f"xG {pred.away_team}: {pred.expected_goals_away:.2f}",
+        font=f_label, fill="white",
+    )
+    draw.text((40, y2 + 35), f"Marcador mas probable: {pred.most_likely_score}", font=f_big, fill="white")
+    draw.text(
+        (40, y2 + 80),
+        f"BTTS {pred.btts:.0%}   Over 1.5 {pred.over_1_5:.0%}   Over 2.5 {pred.over_2_5:.0%}",
+        font=f_label, fill=(200, 200, 200),
+    )
+
+    draw.text((40, H - 35), "Generado con Predictor de Futbol Internacional", font=f_footer, fill=(110, 110, 110))
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 st.set_page_config(page_title="Predictor de Futbol Internacional", page_icon="⚽", layout="wide")
@@ -274,6 +332,14 @@ with kpi3:
     st.metric(f"xG {pred.home_team}", f"{pred.expected_goals_home:.2f}")
 with kpi4:
     st.metric(f"xG {pred.away_team}", f"{pred.expected_goals_away:.2f}")
+
+summary_png = build_summary_image(pred, tournament_label)
+st.download_button(
+    "📥 Descargar resumen (PNG)",
+    data=summary_png,
+    file_name=f"{pred.home_team}_vs_{pred.away_team}.png".replace(" ", "_"),
+    mime="image/png",
+)
 
 if weather_note is not None:
     match_city_n, match_date_n, notes, factor, lh_adj, la_adj = weather_note
