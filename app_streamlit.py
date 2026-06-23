@@ -10,10 +10,85 @@ from __future__ import annotations
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import requests
 import streamlit as st
 
 from src.config import ENSEMBLE_WEIGHT_BAYESIAN, ENSEMBLE_WEIGHT_XGBOOST
+from src.prediction.poisson import predict_from_lambdas
 from src.prediction.predictor import MatchPredictor
+
+GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
+FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+MAX_FORECAST_DAYS = 16
+
+
+@st.cache_data(show_spinner="Buscando ciudad...", ttl=86400)
+def geocode_city(city: str) -> tuple[float, float] | None:
+    try:
+        resp = requests.get(GEOCODE_URL, params={"name": city, "count": 1}, timeout=5)
+        resp.raise_for_status()
+        results = resp.json().get("results")
+        if not results:
+            return None
+        return results[0]["latitude"], results[0]["longitude"]
+    except requests.RequestException:
+        return None
+
+
+@st.cache_data(show_spinner="Consultando pronostico...", ttl=3600)
+def fetch_weather(city: str, date: str) -> dict | None:
+    """Return forecast for *city* on *date* (ISO string), or None if unavailable."""
+    days_ahead = (pd.Timestamp(date) - pd.Timestamp.now().normalize()).days
+    if days_ahead < 0 or days_ahead > MAX_FORECAST_DAYS:
+        return None
+    coords = geocode_city(city)
+    if coords is None:
+        return None
+    lat, lon = coords
+    try:
+        resp = requests.get(
+            FORECAST_URL,
+            params={
+                "latitude": lat,
+                "longitude": lon,
+                "daily": "precipitation_probability_max,temperature_2m_max,temperature_2m_min,windspeed_10m_max",
+                "timezone": "auto",
+                "start_date": date,
+                "end_date": date,
+            },
+            timeout=5,
+        )
+        resp.raise_for_status()
+        daily = resp.json().get("daily")
+        if not daily or not daily.get("time"):
+            return None
+        return {
+            "precip_prob": daily["precipitation_probability_max"][0],
+            "temp_max": daily["temperature_2m_max"][0],
+            "temp_min": daily["temperature_2m_min"][0],
+            "wind": daily["windspeed_10m_max"][0],
+        }
+    except requests.RequestException:
+        return None
+
+
+def weather_adjustment(weather: dict) -> tuple[float, list[str]]:
+    """Heuristic goal-expectancy multiplier based on adverse weather. Not learned by the model."""
+    factor = 1.0
+    notes = []
+    if weather["precip_prob"] >= 70:
+        factor *= 0.93
+        notes.append(f"alta probabilidad de lluvia ({weather['precip_prob']:.0f}%)")
+    if weather["temp_max"] >= 32:
+        factor *= 0.95
+        notes.append(f"calor extremo ({weather['temp_max']:.0f}°C)")
+    if weather["temp_min"] <= 2:
+        factor *= 0.96
+        notes.append(f"frio extremo ({weather['temp_min']:.0f}°C)")
+    if weather["wind"] >= 40:
+        factor *= 0.97
+        notes.append(f"viento fuerte ({weather['wind']:.0f} km/h)")
+    return factor, notes
 
 st.set_page_config(page_title="Predictor de Futbol Internacional", page_icon="⚽", layout="wide")
 
@@ -36,11 +111,27 @@ st.caption("Ensemble Bayesiano (PyMC) + XGBoost Poisson sobre 49k+ partidos hist
 
 teams = get_team_list()
 
+TOURNAMENT_OPTIONS = {
+    "Amistoso": "Friendly",
+    "Eliminatorias / Clasificacion": "Qualification",
+    "Liga de Naciones": "Nations League",
+    "Copa continental (Copa America / Eurocopa / etc.)": "Copa America",
+    "Mundial": "FIFA World Cup",
+    "Juegos Olimpicos": "Olympic Games",
+    "Otro": "Other",
+}
+
 with st.sidebar:
     st.header("Configuracion del partido")
     home_team = st.selectbox("Equipo local", teams, index=teams.index("Argentina") if "Argentina" in teams else 0)
     away_team = st.selectbox("Equipo visitante", teams, index=teams.index("Brazil") if "Brazil" in teams else 1)
-    tournament = st.text_input("Torneo", value="Friendly")
+    tournament_label = st.selectbox(
+        "Contexto del partido",
+        list(TOURNAMENT_OPTIONS.keys()),
+        help="El modelo aprendio del historico que el tipo de torneo afecta el resultado "
+             "(ej. mundiales suelen ser mas cerrados que amistosos). Elegi la categoria real.",
+    )
+    tournament = TOURNAMENT_OPTIONS[tournament_label]
     is_neutral = st.checkbox("Cancha neutral")
 
     st.divider()
@@ -48,6 +139,19 @@ with st.sidebar:
     weight_bayes = st.slider("Peso Bayesiano", 0.0, 1.0, ENSEMBLE_WEIGHT_BAYESIAN, 0.05)
     weight_xgb = round(1.0 - weight_bayes, 2)
     st.caption(f"Peso XGBoost: {weight_xgb}")
+
+    st.divider()
+    st.subheader("Clima (opcional)")
+    use_weather = st.checkbox("Ajustar por clima del partido", value=False)
+    match_city = ""
+    match_date = pd.Timestamp.now().normalize()
+    if use_weather:
+        match_city = st.text_input("Ciudad de la sede", value="")
+        match_date = pd.Timestamp(st.date_input("Fecha del partido", value=pd.Timestamp.now().date()))
+        st.caption(
+            "Pronostico real solo disponible hasta ~16 dias a futuro (Open-Meteo, gratis). "
+            "El ajuste de goles esperados es una heuristica nuestra, no algo que el modelo aprendio de datos."
+        )
 
     predict_clicked = st.button("Predecir", type="primary", use_container_width=True)
 
@@ -68,7 +172,41 @@ pred = predictor.predict(
 )
 
 st.header(f"{pred.home_team} vs {pred.away_team}")
-st.caption(f"Torneo: {tournament} | Cancha neutral: {is_neutral}")
+st.caption(f"Torneo: {tournament_label} | Cancha neutral: {is_neutral}")
+
+if use_weather and match_city.strip():
+    weather = fetch_weather(match_city.strip(), match_date.strftime("%Y-%m-%d"))
+    if weather is None:
+        st.warning(
+            f"No se pudo obtener pronostico para '{match_city}' en esa fecha "
+            f"(ciudad no encontrada o fuera del rango de {MAX_FORECAST_DAYS} dias). "
+            "Se muestra la prediccion sin ajuste por clima."
+        )
+    else:
+        factor, notes = weather_adjustment(weather)
+        if notes:
+            lh_adj = pred.expected_goals_home * factor
+            la_adj = pred.expected_goals_away * factor
+            poisson_adj = predict_from_lambdas(lh_adj, la_adj)
+            st.subheader("🌦️ Ajuste por clima (heuristica, no aprendida por el modelo)")
+            st.caption(
+                f"{match_city} el {match_date.date()}: " + ", ".join(notes) +
+                f". Factor aplicado a goles esperados: x{factor:.2f}"
+            )
+            wcol1, wcol2 = st.columns(2)
+            with wcol1:
+                st.metric("xG local (sin ajuste → con ajuste)",
+                          f"{lh_adj:.2f}", f"{lh_adj - pred.expected_goals_home:+.2f}")
+            with wcol2:
+                st.metric("xG visitante (sin ajuste → con ajuste)",
+                          f"{la_adj:.2f}", f"{la_adj - pred.expected_goals_away:+.2f}")
+            st.caption(
+                f"1X2 ajustado: Local {poisson_adj.home_win:.1%} | Empate {poisson_adj.draw:.1%} | "
+                f"Visitante {poisson_adj.away_win:.1%}  (original: {pred.home_win:.1%} / "
+                f"{pred.draw:.1%} / {pred.away_win:.1%})"
+            )
+        else:
+            st.caption(f"🌦️ Clima en {match_city} sin condiciones adversas relevantes — sin ajuste.")
 
 # ── 1X2 + xG ──────────────────────────────────────────────────────────────────
 col1, col2 = st.columns(2)
