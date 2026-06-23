@@ -1,0 +1,44 @@
+name: Nightly data refresh + retrain
+
+on:
+  schedule:
+    # 09:00 UTC daily — after most matches worldwide have finished and the
+    # source dataset (martj42/international_results) has been updated.
+    - cron: "0 9 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nightly-retrain
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Refresh dataset and retrain
+        run: python train.py --no-optimize --force-download
+
+      - name: Commit and push if data changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data models
+          if git diff --cached --quiet; then
+            echo "No changes — dataset already up to date."
+          else
+            git commit -m "Nightly refresh: update dataset and retrained models"
+            git push
+          fi
