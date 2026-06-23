@@ -27,13 +27,22 @@ FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 MAX_FORECAST_DAYS = 16
 
 # ── Paleta de colores consistente (estetica 7a0: crema/rojo-naranja/dorado) ───
-HOME_COLOR = "#2F6B3C"
-AWAY_COLOR = "#E8462B"
-DRAW_COLOR = "#C8A24B"
-ACCENT_SCALE = "YlOrBr"
-CARD_COLOR = "#C8A24B"
+# Tonos pastel con borde oscuro, en linea con el estilo grafico de la pagina de referencia.
+HOME_COLOR = "#9DC9A4"
+AWAY_COLOR = "#F2A28E"
+DRAW_COLOR = "#E8CB8C"
+CARD_COLOR = "#F2D399"
+CARD_COLOR_2 = "#F0B88B"
+ACCENT_SCALE = [[0.0, "#FBF3E3"], [0.5, "#E8CB8C"], [1.0, "#D98B4B"]]
 CREAM_BG = "#F3ECD8"
 INK_TEXT = "#1B1A17"
+BORDER_WIDTH = 1.6
+
+
+def _style_borders(fig, width: float = BORDER_WIDTH) -> None:
+    """Apply a dark outline to bars/markers/pie slices, matching the 7a0 look."""
+    fig.update_traces(marker=dict(line=dict(color=INK_TEXT, width=width)), selector=dict(type="bar"))
+    fig.update_traces(marker=dict(line=dict(color=INK_TEXT, width=width)), selector=dict(type="pie"))
 
 # ── Banderas ───────────────────────────────────────────────────────────────────
 FLAG_OVERRIDES = {
@@ -156,9 +165,9 @@ def build_summary_image(pred: MatchPrediction, tournament_label: str) -> bytes:
     draw.text((40, 75), tournament_label, font=f_sub, fill=(110, 104, 90))
 
     bars = [
-        (f"Gana {pred.home_team}", pred.home_win, (47, 107, 60)),
-        ("Empate", pred.draw, (200, 162, 75)),
-        (f"Gana {pred.away_team}", pred.away_win, (232, 70, 43)),
+        (f"Gana {pred.home_team}", pred.home_win, (157, 201, 164)),
+        ("Empate", pred.draw, (232, 203, 140)),
+        (f"Gana {pred.away_team}", pred.away_win, (242, 162, 142)),
     ]
     bar_y = 130
     bar_width = 740
@@ -166,8 +175,8 @@ def build_summary_image(pred: MatchPrediction, tournament_label: str) -> bytes:
         draw.text((40, bar_y), label, font=f_label, fill=ink)
         draw.text((40 + bar_width - 60, bar_y), f"{prob:.1%}", font=f_label, fill=ink)
         bar_top = bar_y + 24
-        draw.rectangle([40, bar_top, 40 + bar_width, bar_top + 20], fill=(225, 216, 192))
-        draw.rectangle([40, bar_top, 40 + int(bar_width * prob), bar_top + 20], fill=color)
+        draw.rectangle([40, bar_top, 40 + bar_width, bar_top + 20], fill=(225, 216, 192), outline=ink, width=2)
+        draw.rectangle([40, bar_top, 40 + max(int(bar_width * prob), 2), bar_top + 20], fill=color, outline=ink, width=2)
         bar_y += 65
 
     y2 = bar_y + 15
@@ -239,6 +248,44 @@ st.markdown(
         text-transform: uppercase;
         font-size: 0.85rem;
         letter-spacing: 0.3px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    [data-testid="stTabs"] [data-baseweb="tab"]::before {
+        content: "";
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        background-size: contain;
+        background-repeat: no-repeat;
+    }
+    [data-testid="stTabs"] [data-baseweb="tab"]:nth-child(1)::before {
+        background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMUIxQTE3IiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PGxpbmUgeDE9IjE4IiB5MT0iMjAiIHgyPSIxOCIgeTI9IjEwIi8+PGxpbmUgeDE9IjEyIiB5MT0iMjAiIHgyPSIxMiIgeTI9IjQiLz48bGluZSB4MT0iNiIgeTE9IjIwIiB4Mj0iNiIgeTI9IjE0Ii8+PC9zdmc+");
+    }
+    [data-testid="stTabs"] [data-baseweb="tab"]:nth-child(2)::before {
+        background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMUIxQTE3IiBzdHJva2Utd2lkdGg9IjIiPjxjaXJjbGUgY3g9IjEyIiBjeT0iMTIiIHI9IjkiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI0LjUiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxIiBmaWxsPSIjMUIxQTE3Ii8+PC9zdmc+");
+    }
+    [data-testid="stTabs"] [data-baseweb="tab"]:nth-child(3)::before {
+        background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMUIxQTE3IiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBvbHlsaW5lIHBvaW50cz0iMjIgMTIgMTggMTIgMTUgMjEgOSAzIDYgMTIgMiAxMiIvPjwvc3ZnPg==");
+    }
+    [data-testid="stTabs"] [data-baseweb="tab"]:nth-child(4)::before {
+        background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMUIxQTE3IiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iOSIvPjxwb2x5bGluZSBwb2ludHM9IjEyIDcgMTIgMTIgMTYgMTQiLz48L3N2Zz4=");
+    }
+    [data-testid="stTabs"] [data-baseweb="tab"]:nth-child(5)::before {
+        background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMUIxQTE3IiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCI+PGNpcmNsZSBjeD0iMTEiIGN5PSIxMSIgcj0iNyIvPjxsaW5lIHgxPSIyMSIgeTE9IjIxIiB4Mj0iMTYuNjUiIHkyPSIxNi42NSIvPjwvc3ZnPg==");
+    }
+
+    div.stDownloadButton > button p::before {
+        content: "";
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        background-size: contain;
+        background-repeat: no-repeat;
+        margin-right: 6px;
+        vertical-align: middle;
+        background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRkZGRkZGIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTIxIDE1djRhMiAyIDAgMCAxLTIgMkg1YTIgMiAwIDAgMS0yLTJ2LTQiLz48cG9seWxpbmUgcG9pbnRzPSI3IDEwIDEyIDE1IDE3IDEwIi8+PGxpbmUgeDE9IjEyIiB5MT0iMTUiIHgyPSIxMiIgeTI9IjMiLz48L3N2Zz4=");
     }
 
     [data-testid="stSidebar"] {
@@ -370,12 +417,12 @@ def render_single_match(teams: list[str]) -> None:
                 poisson_adj = predict_from_lambdas(lh_adj, la_adj)
                 weather_note = (match_city, match_date, notes, factor, lh_adj, la_adj)
             else:
-                st.caption(f"🌦️ Clima en {match_city} sin condiciones adversas relevantes — sin ajuste.")
+                st.caption(f"Clima en {match_city} sin condiciones adversas relevantes — sin ajuste.")
 
     # ── KPIs principales ───────────────────────────────────────────────────────
     outcomes = [
         (pred.home_win, f"Gana {pred.home_team}", home_flag),
-        (pred.draw, "Empate", "🤝"),
+        (pred.draw, "Empate", ""),
         (pred.away_win, f"Gana {pred.away_team}", away_flag),
     ]
     favorite = max(outcomes, key=lambda o: o[0])
@@ -392,7 +439,7 @@ def render_single_match(teams: list[str]) -> None:
 
     summary_png = build_summary_image(pred, tournament_label)
     st.download_button(
-        "📥 Descargar resumen (PNG)",
+        "Descargar resumen (PNG)",
         data=summary_png,
         file_name=f"{pred.home_team}_vs_{pred.away_team}.png".replace(" ", "_"),
         mime="image/png",
@@ -400,7 +447,7 @@ def render_single_match(teams: list[str]) -> None:
 
     if weather_note is not None:
         match_city_n, match_date_n, notes, factor, lh_adj, la_adj = weather_note
-        st.subheader("🌦️ Ajuste por clima (heuristica, no aprendida por el modelo)")
+        st.subheader("Ajuste por clima (heuristica, no aprendida por el modelo)")
         st.caption(
             f"{match_city_n} el {match_date_n.date()}: " + ", ".join(notes) +
             f". Factor aplicado a goles esperados: x{factor:.2f}"
@@ -421,7 +468,7 @@ def render_single_match(teams: list[str]) -> None:
     st.divider()
 
     tab_resultado, tab_goles, tab_eventos, tab_h2h, tab_modelo = st.tabs(
-        ["📊 Resultado", "⚽ Goles", "📈 Eventos", "📜 Historial H2H", "🔍 Patrones & Modelo"]
+        ["Resultado", "Goles", "Eventos", "Historial H2H", "Patrones & Modelo"]
     )
 
     # ── Tab: Resultado ─────────────────────────────────────────────────────────
@@ -434,6 +481,7 @@ def render_single_match(teams: list[str]) -> None:
                      color="Resultado", color_discrete_sequence=[HOME_COLOR, DRAW_COLOR, AWAY_COLOR])
         fig.update_layout(yaxis_tickformat=".0%", showlegend=False, height=420,
                            title="Resultado del partido")
+        _style_borders(fig)
         st.plotly_chart(fig, use_container_width=True)
 
     # ── Tab: Goles ──────────────────────────────────────────────────────────────
@@ -447,6 +495,7 @@ def render_single_match(teams: list[str]) -> None:
             fig = px.bar(xg_df, x="Equipo", y="xG", text_auto=".2f", color="Equipo",
                          color_discrete_sequence=[HOME_COLOR, AWAY_COLOR])
             fig.update_layout(showlegend=False, height=380, title="Goles esperados (xG)")
+            _style_borders(fig)
             st.plotly_chart(fig, use_container_width=True)
 
         with col2:
@@ -458,6 +507,7 @@ def render_single_match(teams: list[str]) -> None:
                          color_continuous_scale=ACCENT_SCALE)
             fig.update_layout(yaxis_tickformat=".0%", height=380, coloraxis_showscale=False,
                                title="Mercados de goles")
+            _style_borders(fig)
             st.plotly_chart(fig, use_container_width=True)
 
         st.subheader("Distribucion de marcadores")
@@ -471,12 +521,14 @@ def render_single_match(teams: list[str]) -> None:
             x=[str(i) for i in range(max_goals + 1)],
             y=[str(i) for i in range(max_goals + 1)],
             colorscale=ACCENT_SCALE,
+            xgap=3,
+            ygap=3,
             texttemplate="%{z:.1%}",
             hovertemplate=f"{pred.home_team}: %{{y}}<br>{pred.away_team}: %{{x}}<br>Prob: %{{z:.1%}}<extra></extra>",
         ))
         fig.update_layout(
             xaxis_title=f"Goles {pred.away_team}", yaxis_title=f"Goles {pred.home_team}",
-            height=420,
+            height=420, plot_bgcolor=CREAM_BG,
         )
         st.plotly_chart(fig, use_container_width=True)
 
@@ -490,7 +542,7 @@ def render_single_match(teams: list[str]) -> None:
                 labels=[pred.home_team, pred.away_team],
                 values=[e.home_possession, e.away_possession],
                 hole=0.5,
-                marker_colors=[HOME_COLOR, AWAY_COLOR],
+                marker=dict(colors=[HOME_COLOR, AWAY_COLOR], line=dict(color=INK_TEXT, width=BORDER_WIDTH)),
             )])
             fig.update_layout(title="Posesion", height=340)
             st.plotly_chart(fig, use_container_width=True)
@@ -504,6 +556,7 @@ def render_single_match(teams: list[str]) -> None:
             fig = px.bar(shots_df, x="Tipo", y="Valor", color="Equipo", barmode="group",
                          color_discrete_sequence=[HOME_COLOR, AWAY_COLOR])
             fig.update_layout(title="Tiros", height=340)
+            _style_borders(fig)
             st.plotly_chart(fig, use_container_width=True)
 
         with col3:
@@ -512,8 +565,9 @@ def render_single_match(teams: list[str]) -> None:
                 "Amarillas esperadas": [e.home_yellow_cards, e.away_yellow_cards],
             })
             fig = px.bar(cards_df, x="Equipo", y="Amarillas esperadas", text_auto=".2f", color="Equipo",
-                         color_discrete_sequence=[CARD_COLOR, "#FFA94D"])
+                         color_discrete_sequence=[CARD_COLOR, CARD_COLOR_2])
             fig.update_layout(title="Tarjetas amarillas", height=340, showlegend=False)
+            _style_borders(fig)
             st.plotly_chart(fig, use_container_width=True)
 
         st.caption(
@@ -537,7 +591,7 @@ def render_single_match(teams: list[str]) -> None:
             st.caption(f"Ultimos {len(h2h_df)} enfrentamientos directos (cualquier sede)")
             c1, c2, c3 = st.columns(3)
             c1.metric(f"{home_flag} Victorias {pred.home_team}", wins_h)
-            c2.metric("🤝 Empates", draws)
+            c2.metric("Empates", draws)
             c3.metric(f"{away_flag} Victorias {pred.away_team}", wins_a)
 
             display_df = h2h_df.copy()
@@ -568,6 +622,7 @@ def render_single_match(teams: list[str]) -> None:
                 fig = px.bar(pat_df, x="Frecuencia", y="Patron", color="Fuerza", orientation="h",
                              text_auto=".1%", color_discrete_map={"FUERTE": HOME_COLOR, "MODERADO": DRAW_COLOR})
                 fig.update_layout(xaxis_tickformat=".0%", height=320)
+                _style_borders(fig)
                 st.plotly_chart(fig, use_container_width=True)
         else:
             st.caption("No hay suficientes partidos historicos similares para detectar patrones.")
@@ -676,10 +731,10 @@ def render_quiniela(teams: list[str]) -> None:
     )
 
     csv = results_df.to_csv(index=False).encode("utf-8")
-    st.download_button("📥 Descargar quiniela (CSV)", data=csv, file_name="quiniela.csv", mime="text/csv")
+    st.download_button("Descargar quiniela (CSV)", data=csv, file_name="quiniela.csv", mime="text/csv")
 
 
-st.title("⚽ Predictor de Futbol Internacional")
+st.title("Predictor de Futbol Internacional")
 st.caption("Ensemble Bayesiano (PyMC) + XGBoost Poisson sobre 49k+ partidos historicos (1872-presente)")
 
 mode = st.radio(
