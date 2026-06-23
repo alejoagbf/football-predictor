@@ -404,6 +404,28 @@ st.markdown(
         background-color: #FFFFFF;
         border-right: 1px solid #E3DCC8;
     }
+
+    /* Boton de abrir/cerrar la barra lateral: mas grande y visible, con etiqueta. */
+    @keyframes pulse-sidebar-btn {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(232,70,43,0.45); }
+        50% { box-shadow: 0 0 0 9px rgba(232,70,43,0); }
+    }
+    button[data-testid="stExpandSidebarButton"],
+    button[data-testid="stBaseButton-headerNoPadding"] {
+        background-color: #E8462B !important;
+        border-radius: 50% !important;
+        width: 44px !important;
+        height: 44px !important;
+        animation: pulse-sidebar-btn 2.2s infinite;
+        position: relative;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+    button[data-testid="stExpandSidebarButton"] [data-testid="stIconMaterial"],
+    button[data-testid="stBaseButton-headerNoPadding"] [data-testid="stIconMaterial"] {
+        color: #FFFFFF !important;
+        font-size: 24px !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
